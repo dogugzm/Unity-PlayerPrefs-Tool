@@ -95,7 +95,11 @@ public class PlayerPrefScanner : EditorWindow
                 break;
 
             string key = scriptContent.Substring(openQuoteIndex + 1, closeQuoteIndex - openQuoteIndex - 1);
-            playerPrefs.Add(key);
+            
+           if (!playerPrefs.Contains(key))
+            {
+                playerPrefs.Add(key);
+            }
 
             index = closeQuoteIndex;
         }
