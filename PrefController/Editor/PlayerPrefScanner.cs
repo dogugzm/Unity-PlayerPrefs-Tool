@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 
@@ -29,21 +30,21 @@ public class PlayerPrefScanner : EditorWindow
         {
             foreach (var kvp in playerPrefsByScript)
             {
-                GUILayout.Label(kvp.Key, EditorStyles.boldLabel);
+                GUILayout.Label(kvp.Key, EditorStyles.boldLabel); //script name as header.
                 foreach (var playerPref in kvp.Value)
                 {
                     if (PlayerPrefs.HasKey(playerPref))
                     {
-                        if (GUILayout.Button(playerPref))
-                        {                            
+                        if (GUILayout.Button(playerPref))  // pref name as button.
+                        {
                             PlayerPrefs.DeleteKey(playerPref);
-                            Debug.Log($"{playerPref} deleted succesfully");                                                        
+                            Debug.Log($"{playerPref} deleted succesfully");
                         }
                     }
                     else
                     {
                         GUILayout.Label(playerPref + " (Deleted)");
-
+                        //trick to achieve strike-through style text in editor.
                         Rect lastRect = GUILayoutUtility.GetLastRect();
                         Handles.color = Color.white;
                         Handles.DrawLine(new Vector3(lastRect.x, lastRect.y + (lastRect.height / 2)), new Vector3(lastRect.x + lastRect.width, lastRect.y + (lastRect.height / 2)));
@@ -63,53 +64,96 @@ public class PlayerPrefScanner : EditorWindow
 
         foreach (var file in scriptFiles)
         {
-            if (Path.GetFileNameWithoutExtension(file) == this.GetType().ToString())
+            //ignore this script
+            if (Path.GetFileNameWithoutExtension(file) == GetType().ToString())
             {
                 continue;
             }
 
+            string scriptName = Path.GetFileNameWithoutExtension(file);
             string scriptContent = File.ReadAllText(file);
-            if (scriptContent.Contains("PlayerPrefs.Set"))
+
+            if (!scriptContent.Contains("PlayerPrefs.Set"))
             {
-                string scriptName = Path.GetFileNameWithoutExtension(file);
-                List<string> playerPrefsInScript = GetPlayerPrefsInScript(scriptContent);
-                playerPrefsByScript.Add(scriptName, playerPrefsInScript);
+                continue;
             }
+
+            List<string> Keys = GetKeysInScript(scriptContent);
+
+            playerPrefsByScript.Add(scriptName, Keys);
+
         }
     }
 
-    private List<string> GetPlayerPrefsInScript(string scriptContent)
+    private List<string> GetKeysInScript(string scriptContent)
     {
-        List<string> playerPrefs = new List<string>();
+        List<string> Keys = new();
 
         int index = 0;
         while ((index = scriptContent.IndexOf("PlayerPrefs.Set", index)) != -1)
         {
             int start = index + "PlayerPrefs.Set".Length;
-            int openQuoteIndex = scriptContent.IndexOf('"', start);
-            if (openQuoteIndex == -1)
+            int openParenIndex = scriptContent.IndexOf('(', start);
+            if (openParenIndex == -1)
                 break;
 
-            int closeQuoteIndex = scriptContent.IndexOf('"', openQuoteIndex + 1);
-            if (closeQuoteIndex == -1)
+            int closeParenIndex = scriptContent.IndexOf(')', openParenIndex + 1);
+            if (closeParenIndex == -1)
                 break;
 
-            string key = scriptContent.Substring(openQuoteIndex + 1, closeQuoteIndex - openQuoteIndex - 1);
-            
-           if (!playerPrefs.Contains(key))
+            string args = scriptContent.Substring(openParenIndex + 1, closeParenIndex - openParenIndex - 1);
+
+            // split by comma to find the key
+            string[] argParts = args.Split(',');
+            if (argParts.Length >= 2)
             {
-                playerPrefs.Add(key);
+                string key = argParts[0].Trim();
+
+                // check if it is a inline string or setted value
+                if (!(key.StartsWith("\"") && key.EndsWith("\"")))
+                {
+                    string actualValue = FindProportyValueForKey(scriptContent, key);
+                    actualValue = actualValue.Trim();
+                    if (!Keys.Contains(actualValue))
+                    {
+                        Keys.Add(actualValue);
+                    }
+
+                }
+                else
+                {
+                    string actualValue = key.Trim('"');
+                    if (!Keys.Contains(actualValue))
+                    {
+                        Keys.Add(actualValue);
+                    }
+                }
             }
 
-            index = closeQuoteIndex;
+            index = closeParenIndex;
         }
 
-        return playerPrefs;
+        return Keys;
     }
 
+    /// <summary>
+    /// Search the script for specific matched pattern with proporty key
+    /// </summary>
+    /// <param name="scriptContent"></param>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    private string FindProportyValueForKey(string scriptContent, string key)
+    {
+        string constantValue = "";
 
+        // both constant and non-constant string declarations
+        string pattern = $@"\b(?:const\s+)?string\s+{key}\s*=\s*""(.+?)""";
+        Match match = Regex.Match(scriptContent, pattern);
+        if (match.Success)
+        {
+            constantValue = match.Groups[1].Value;
+        }
 
-
-
-
+        return constantValue;
+    }
 }
