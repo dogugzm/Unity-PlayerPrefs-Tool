@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -8,6 +10,7 @@ public class PlayerPrefScanner : EditorWindow
 {
     private Vector2 scrollPos;
     private Dictionary<string, List<string>> playerPrefsByScript;
+    bool readyToSet = false;
 
     [MenuItem("Tools/Get All Player Prefs")]
     public static void ShowWindow()
@@ -21,18 +24,19 @@ public class PlayerPrefScanner : EditorWindow
 
         if (GUILayout.Button("Scan All Player Prefs"))
         {
+            readyToSet = false;
             ScanProject();
         }
 
         scrollPos = EditorGUILayout.BeginScrollView(scrollPos);
 
-        if (playerPrefsByScript != null)
+        if (playerPrefsByScript != null && readyToSet)
         {
             foreach (var kvp in playerPrefsByScript)
             {
                 GUILayout.Label(kvp.Key, EditorStyles.boldLabel); //script name as header.
                 foreach (var playerPref in kvp.Value)
-                {
+                {                    
                     if (PlayerPrefs.HasKey(playerPref))
                     {
                         if (GUILayout.Button(playerPref))  // pref name as button.
@@ -49,6 +53,7 @@ public class PlayerPrefScanner : EditorWindow
                         Handles.color = Color.white;
                         Handles.DrawLine(new Vector3(lastRect.x, lastRect.y + (lastRect.height / 2)), new Vector3(lastRect.x + lastRect.width, lastRect.y + (lastRect.height / 2)));
                     }
+                    
                 }
             }
         }
@@ -59,11 +64,14 @@ public class PlayerPrefScanner : EditorWindow
     private void ScanProject()
     {
         playerPrefsByScript = new Dictionary<string, List<string>>();
+        List<string> displayedPrefs = new List<string>();
+        List<string> keysToAdd = new List<string>();
 
         string[] scriptFiles = Directory.GetFiles(Application.dataPath, "*.cs", SearchOption.AllDirectories);
 
         foreach (var file in scriptFiles)
         {
+
             //ignore this script
             if (Path.GetFileNameWithoutExtension(file) == GetType().ToString())
             {
@@ -80,9 +88,28 @@ public class PlayerPrefScanner : EditorWindow
 
             List<string> Keys = GetKeysInScript(scriptContent);
 
+            foreach (var item in Keys)
+            {
+                if (!displayedPrefs.Contains(item))
+                {
+                    displayedPrefs.Add(item);               
+                }
+                else
+                {
+                    keysToAdd.Add(item);
+                }
+            }
+            if (keysToAdd.Count>0)
+            {
+                foreach (var item in keysToAdd)
+                {
+                    Keys.Remove(item);                 
+                }
+            }
             playerPrefsByScript.Add(scriptName, Keys);
-
         }
+       
+        readyToSet = true;
     }
 
     private List<string> GetKeysInScript(string scriptContent)
@@ -118,7 +145,6 @@ public class PlayerPrefScanner : EditorWindow
                     {
                         Keys.Add(actualValue);
                     }
-
                 }
                 else
                 {
